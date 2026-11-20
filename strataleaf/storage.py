@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS index_values (
  PRIMARY KEY(collection,name,token,key), FOREIGN KEY(collection,name) REFERENCES index_defs(collection,name) ON DELETE CASCADE);
 CREATE INDEX IF NOT EXISTS index_document ON index_values(collection,key);
 CREATE TABLE IF NOT EXISTS pins (name TEXT PRIMARY KEY, rev INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS consumers (name TEXT PRIMARY KEY, ack INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS consumers (name TEXT PRIMARY KEY, ack INTEGER NOT NULL, collections TEXT);
 """
 
 
@@ -38,6 +38,13 @@ class Storage:
         self.connection.execute("PRAGMA journal_mode=WAL")
         self.connection.execute("PRAGMA synchronous=FULL")
         self.connection.executescript(DDL)
+        columns = {row[1] for row in self.connection.execute("PRAGMA table_info(consumers)")}
+        if "collections" not in columns:
+            try:
+                self.connection.execute("ALTER TABLE consumers ADD COLUMN collections TEXT")
+            except sqlite3.OperationalError:
+                if "collections" not in {row[1] for row in self.connection.execute("PRAGMA table_info(consumers)")}:
+                    raise
         with self.atomic():
             initial = {"format": "1", "head": "0", "floor": "0", "database_id": str(uuid.uuid4()),
                        "cursor_secret": secrets.token_hex(32), "mode": "primary", "upstream": "", "catalog_epoch": "0"}

@@ -6,4 +6,6 @@ diagnostics.inspect(deep=True) 检查 SQLite 完整性、外键、提交连续�
 
 examples.observations 的 contention 会让独立连接暂持 IMMEDIATE 锁，记录第二句柄的 busy 超时及释放后的成功；retention_pressure 记录读保留点和消费者分别阻止水位推进的现象。它们用独立临时文件，不接触生产路径。观察包含真实修订和异常，适合复核运行边界。
 
+按集合订阅时，用 `feed.describe(consumer)` 查看持久 ack、关注集合、head/floor 与 `resumable`；用 `feed.pending(consumer, limit)` 从 ack 继续读取，页的 `events` 是投影后的提交视图，`skipped` 列出被完全过滤的修订，`next` 为安全确认位置。`feed.subscribe(consumer, collections)` 保存新的关注集合，`widened` 表示新增了原先未关注的集合；扩大范围不会自动重放已确认的历史，需要重建时可从保留范围内显式重读。恢复或长期离线导致 ack 早于 floor 时，`pending` 拒绝并提示调用 `feed.reattach`，后者返回 `dropped` 说明无法再解释的修订数量。
+
 关闭所有调用方句柄再移动数据目录；不支持共享网络盘或多主写入。在空间紧张时先核实 pin/消费者，推进已完成的确认后再回收；回收不自动缩小文件，物理容量由 SQLite 空闲页复用。到期清理只在显式调用时执行，不能把墙钟到期等同于读视图变动。

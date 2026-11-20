@@ -26,6 +26,17 @@ class Diagnostics:
             for pin in connection.execute("SELECT name,rev FROM pins"):
                 if not floor <= pin["rev"] <= head:
                     issues.append("read pin outside retained history: " + pin["name"])
+            for consumer in connection.execute("SELECT name,ack,collections FROM consumers"):
+                if not floor <= consumer["ack"] <= head:
+                    issues.append("consumer outside retained history: " + consumer["name"])
+                if consumer["collections"] is not None:
+                    try:
+                        stored = loads(consumer["collections"])
+                    except (TypeError, ValueError):
+                        issues.append("consumer has malformed collection selection: " + consumer["name"])
+                    else:
+                        if not isinstance(stored, list) or not stored:
+                            issues.append("consumer has malformed collection selection: " + consumer["name"])
             if deep:
                 expected = set()
                 for definition in connection.execute("SELECT * FROM index_defs"):

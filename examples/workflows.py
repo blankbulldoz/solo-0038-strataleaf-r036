@@ -71,11 +71,27 @@ def run(flow):
                 collision = rejected(lambda: db.batch().put("segments", "new", {"region": "north", "sequence": 8, "code": "c0"}).commit(), Conflict)
                 output = {"plan": indexed.plan, "keys": [row.key for row in indexed.records], "collision": collision, "integrity": db.diagnostics.inspect(True)}
             elif flow == "feed":
+                db.catalog.create("marks")
                 db.feed.register("mirror", 0)
                 db.batch().delete("segments", "seg_00").commit()
+                db.batch().put("marks", "m0", {"segment": "seg_00"}).commit()
+                mixed = db.revision
+                db.batch().put("segments", "seg_01", {"region": "west", "sequence": 11}).put("marks", "m1", {"segment": "seg_01"}).commit()
                 commits = db.feed.read(0, limit=1)
                 db.feed.acknowledge("mirror", commits[-1]["revision"])
+                # A consumer that only watches marks skips segment-only commits and still
+                # receives the mark half of the mixed commit together with its full scope.
+                db.feed.register("mark_watcher", 0, ["marks"])
+                page = db.feed.pending("mark_watcher", limit=10)
+                db.feed.acknowledge("mark_watcher", page.next)
+                if [event["revision"] for event in page] != [mixed, db.revision] or page.next != db.revision:
+                    raise RuntimeError("collection selection skipped or repeated a watched commit")
+                if page[0]["partial"] or not page[1]["partial"] or page[1]["touched_collections"] != ["segments", "marks"]:
+                    raise RuntimeError("selected event lost its original commit scope")
                 output = {"complete_commit": commits, "ack": db.feed.position("mirror"),
+                          "selected": page.to_dict(),
+                          "mixed_revision": mixed,
+                          "selection": db.feed.selection("mark_watcher"),
                           "backward": rejected(lambda: db.feed.acknowledge("mirror", 0), Conflict)}
             elif flow == "backup":
                 backup = db.archives.backup(folder / "backup.db")
